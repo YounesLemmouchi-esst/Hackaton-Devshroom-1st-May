@@ -10,9 +10,10 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\youne\\Downloads\\dev
 genai.configure()
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-# Game settings
+# Update game settings
 ERAS = ["Stone Age", "Medieval", "Industrial", "Modern", "Future"]
 XP_PER_QUESTION = 5
+XP_FOR_LEVEL_UP = 200  # XP needed to level up
 
 # Session state
 if "xp" not in st.session_state:
@@ -39,6 +40,8 @@ if "max_streak" not in st.session_state:
     st.session_state.max_streak = 0
 if "streak_multiplier" not in st.session_state:
     st.session_state.streak_multiplier = 1
+if "coins" not in st.session_state:
+    st.session_state.coins = 0
 
 # Prompt by level
 def get_prompt_by_level(level):
@@ -221,16 +224,35 @@ def get_boss_questions_from_gemini():
     }
 
 # XP and level logic
+# Modified level_up function that separates levels from eras
 def level_up():
+    # Increase level
     st.session_state.level += 1
-    st.session_state.era = ERAS[min(st.session_state.level - 1, len(ERAS) - 1)]
+    
+    # Notice we no longer update era based on level
+    # The era will need to be changed separately now
+    
     st.session_state.boss_mode = False
     st.session_state.current_question = None
     st.session_state.answered = False
     # Reset batch info on level up
     st.session_state.question_batch = []
     st.session_state.current_batch_index = 0
-    st.success(f"🎉 You've reached the {st.session_state.era} Era!")
+    # Award coins for leveling up
+    coin_reward = 10  # Flat 10 coins per level up
+    st.session_state.coins += coin_reward
+    st.success(f"🎉 You've leveled up to level {st.session_state.level}! Earned {coin_reward} 🪙 coins!")
+
+# Add a function to unlock a new era (separate from leveling up)
+def unlock_era(new_era_index):
+    if new_era_index < len(ERAS):
+        st.session_state.era = ERAS[new_era_index]
+        # Award bonus coins for unlocking a new era
+        era_coin_reward = 100  # Bonus for unlocking a new era
+        st.session_state.coins += era_coin_reward
+        st.success(f"🌟 You've unlocked the {st.session_state.era} Era! Earned {era_coin_reward} 🪙 coins!")
+        return True
+    return False
 
 # Add this helper function for flexible answer checking
 def fuzzy_check_answer(user_answer, correct_answer):
@@ -317,14 +339,14 @@ st.subheader(f"Current Era: {st.session_state.era}")
 # Enhanced sidebar with visual elements
 st.sidebar.markdown("### 🏆 Player Stats")
 
-# XP and Level Progress with custom styling
+# XP and Level Progress with custom styling - update to include progress bar
 st.sidebar.markdown(
     f"""
     <div style="padding:10px; border-radius:10px; background-color:rgba(150,200,255,0.2); margin-bottom:15px;">
         <h4 style="margin:0; color:#4169E1;">🌟 Level {st.session_state.level}</h4>
-        <p style="margin:5px 0 10px 0;">XP: {st.session_state.xp} / {st.session_state.level * 30}</p>
+        <p style="margin:5px 0 5px 0;">XP: {st.session_state.xp} / {XP_FOR_LEVEL_UP}</p>
         <div style="height:20px; background-color:#f0f2f6; border-radius:10px; overflow:hidden;">
-            <div style="width:{min(100, int(st.session_state.xp / (st.session_state.level * 30) * 100))}%; 
+            <div style="width:{min(100, int(st.session_state.xp % XP_FOR_LEVEL_UP / XP_FOR_LEVEL_UP * 100))}%; 
                      height:100%; 
                      background-color:#4169E1;
                      border-radius:10px;
@@ -332,8 +354,12 @@ st.sidebar.markdown(
                      color:white;
                      font-size:12px;
                      line-height:20px;">
-                {min(100, int(st.session_state.xp / (st.session_state.level * 30) * 100))}%
+                {min(100, int(st.session_state.xp % XP_FOR_LEVEL_UP / XP_FOR_LEVEL_UP * 100))}%
             </div>
+        </div>
+        <p style="margin:5px 0 0 0;">Era: <b>{st.session_state.era}</b></p>
+        <div style="padding:5px 0;">
+            <span style="font-weight:bold; color:#FFD700;">🪙 Coins: {st.session_state.coins}</span>
         </div>
     </div>
     """, 
@@ -566,6 +592,10 @@ if not st.session_state.boss_mode:
                     multiplier = calculate_multiplier(st.session_state.current_streak)
                     xp_earned = int(XP_PER_QUESTION * multiplier)
                     
+                    # Award coins for correct answers
+                    coins_earned = int(1 * multiplier)  # Base 1 coin per correct answer, multiplied by streak
+                    st.session_state.coins += coins_earned
+                    
                     # Different messages based on streak
                     if st.session_state.current_streak >= 8:
                         streak_msg = f"🔥🔥🔥 LEGENDARY STREAK: {st.session_state.current_streak} | {multiplier}x BONUS!"
@@ -576,21 +606,18 @@ if not st.session_state.boss_mode:
                     else:
                         streak_msg = "Correct!"
                     
-                    st.success(f"{streak_msg} +{xp_earned} XP")
+                    st.success(f"{streak_msg} +{xp_earned} XP, +{coins_earned} 🪙")
                     st.session_state.xp += xp_earned
                     
-                    # Check for level up / boss mode condition
-                    if st.session_state.xp >= st.session_state.level * 30 and st.session_state.era not in st.session_state.boss_passed:
-                        st.session_state.boss_mode = True
-                        st.session_state.current_question = None # Clear question before boss
-                        st.session_state.answered = False
-                        # No need to reset batch here, do it in level_up
-                        st.rerun() # Rerun to show boss mode
-                    else:
-                        # Correct answer, move to next question automatically
-                        st.session_state.current_question = None # Trigger selection of next question from batch
-                        st.session_state.answered = False
-                        st.rerun() # Rerun to fetch/select next question
+                    # Check if player has earned enough XP to level up
+                    if st.session_state.xp >= (st.session_state.level * XP_FOR_LEVEL_UP):
+                        level_up()  # Call level up which only increases level now, not era
+                        # No need to stop or rerun right away - let the user see both messages
+                    
+                    # Always just go to the next question
+                    st.session_state.current_question = None
+                    st.session_state.answered = False
+                    st.rerun()
                 else:
                     # Reset streak for wrong answer
                     if st.session_state.current_streak >= 3:
@@ -669,19 +696,58 @@ elif st.session_state.boss_mode:
                 st.session_state.current_streak += 1
                 st.session_state.max_streak = max(st.session_state.max_streak, st.session_state.current_streak)
                 
-                victory_message = "🏆 You defeated the boss!"
+                # Award bonus coins for defeating a boss
+                boss_coin_reward = st.session_state.level * 75
+                st.session_state.coins += boss_coin_reward
+                
+                victory_message = f"🏆 You defeated the boss! Earned {boss_coin_reward} 🪙 coins!"
                 if minor_errors:
                     victory_message += " (with some minor spelling errors, but that's ok!)"
                 st.success(victory_message) 
                 st.balloons()
-                st.session_state.boss_passed.append(st.session_state.era)
-                # Before level up, clear the boss questions for this era
-                if st.session_state.era in st.session_state.boss_questions:
-                    del st.session_state.boss_questions[st.session_state.era]
-                # Call level_up which handles state changes and rerun
-                level_up()
-                # Need to stop the script here after level up to prevent potential downstream errors before rerun
-                st.stop()
+                
+                # Mark this boss as defeated
+                if st.session_state.era not in st.session_state.boss_passed:
+                    st.session_state.boss_passed.append(st.session_state.era)
+                    
+                    # After defeating a boss, check if we can unlock a new era
+                    # Find the current era index
+                    current_era_index = ERAS.index(st.session_state.era)
+                    # Try to unlock the next era
+                    next_era_available = len(st.session_state.boss_passed) >= current_era_index + 1
+                    
+                    if next_era_available and current_era_index < len(ERAS) - 1:
+                        # Show option to travel to next era or stay
+                        st.write("🚀 You've unlocked a new era! Would you like to travel there now?")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button(f"Travel to {ERAS[current_era_index + 1]}"):
+                                unlock_era(current_era_index + 1)
+                                # Before era change, clear the boss questions for this era
+                                if st.session_state.era in st.session_state.boss_questions:
+                                    del st.session_state.boss_questions[st.session_state.era]
+                                st.rerun()
+                        with col2:
+                            if st.button(f"Stay in {st.session_state.era}"):
+                                # Exit boss mode but stay in current era
+                                st.session_state.boss_mode = False
+                                if st.session_state.era in st.session_state.boss_questions:
+                                    del st.session_state.boss_questions[st.session_state.era]
+                                st.rerun()
+                    else:
+                        # Just exit boss mode
+                        st.session_state.boss_mode = False
+                        # Clear boss questions
+                        if st.session_state.era in st.session_state.boss_questions:
+                            del st.session_state.boss_questions[st.session_state.era]
+                        st.rerun()
+                else:
+                    # Just exit boss mode for repeated boss victories
+                    st.session_state.boss_mode = False
+                    # Clear boss questions
+                    if st.session_state.era in st.session_state.boss_questions:
+                        del st.session_state.boss_questions[st.session_state.era]
+                    st.rerun()
             else:
                 # Reset streak on boss failure
                 if st.session_state.current_streak >= 3:
@@ -694,6 +760,78 @@ elif st.session_state.boss_mode:
                     st.info("💡 Hint: Focus on fixing the answers marked with ❌")
                 # Keep boss_mode=True, user stays on this screen to retry
 
+# === Shop Section ===
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🛒 Shop")
+
+# Create shop items in session state if they don't exist
+if "shop_items" not in st.session_state:
+    st.session_state.shop_items = {
+        "hint_powerup": {
+            "name": "Hint Powerup",
+            "description": "Get a hint on your next difficult question",
+            "price": 10,
+            "icon": "💡",
+            "purchased": False,
+            "era": "all"  # This item is available in all eras
+        },
+        "stone_meat": {
+            "name": "Prehistoric Meat",
+            "description": "A chunk of raw mammoth meat - Stone Age delicacy",
+            "price": 50,
+            "icon": "🥩",
+            "purchased": False,
+            "era": "Stone Age"  # Only available in Stone Age
+        },
+        "stone_rock": {
+            "name": "Sharp Rock",
+            "description": "A primitive tool for hunting and crafting",
+            "price": 50,
+            "icon": "🪨",
+            "purchased": False,
+            "era": "Stone Age"  # Only available in Stone Age
+        }
+    }
+
+# Display shop items - filtered by current era or "all"
+current_era = st.session_state.era
+st.sidebar.markdown(f"#### Items for {current_era}")
+
+# Filter items for current era or available in all eras
+available_items = {item_id: item for item_id, item in st.session_state.shop_items.items() 
+                   if item["era"] == current_era or item["era"] == "all"}
+
+if not available_items:
+    st.sidebar.markdown("No items available in this era yet.")
+else:
+    for item_id, item in available_items.items():
+        # Create a container for each shop item with custom styling
+        st.sidebar.markdown(
+            f"""
+            <div style="padding:10px; border-radius:10px; background-color:rgba(200,200,255,0.2); margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:18px;">{item['icon']} {item['name']}</span>
+                    <span style="font-weight:bold; color:#FFD700;">🪙 {item['price']}</span>
+                </div>
+                <p style="margin:5px 0; font-size:12px; color:#666;">{item['description']}</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Add purchase button
+        if not item['purchased']:
+            if st.sidebar.button(f"Buy {item['name']}", key=f"buy_{item_id}"):
+                if st.session_state.coins >= item['price']:
+                    st.session_state.coins -= item['price']
+                    st.session_state.shop_items[item_id]['purchased'] = True
+                    st.sidebar.success(f"You purchased {item['name']}!")
+                    st.rerun()  # Refresh to update the UI
+                else:
+                    st.sidebar.error(f"Not enough coins! You need {item['price'] - st.session_state.coins} more coins.")
+        else:
+            st.sidebar.success(f"Purchased ✓")
+
 # Add stats display to sidebar
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Stats")
@@ -702,4 +840,36 @@ st.sidebar.markdown(f"Best Streak: {st.session_state.max_streak}")
 if st.session_state.current_streak >= 3:
     multiplier = calculate_multiplier(st.session_state.current_streak)
     st.sidebar.markdown(f"XP Multiplier: {multiplier}x")
+st.sidebar.markdown(f"🪙 Coins: {st.session_state.coins}")
 st.sidebar.markdown(f"Eras Conquered: {len(st.session_state.boss_passed)}/{len(ERAS)}")
+
+# Add an era selector in the sidebar for traveling between unlocked eras
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🧭 Time Travel")
+
+# Filter to only show unlocked eras
+unlocked_eras = [ERAS[0]]  # Stone Age is always unlocked
+for era in ERAS[1:]:
+    if era in st.session_state.boss_passed:
+        unlocked_eras.append(era)
+
+# Only show the era selector if player has unlocked more than one era
+if len(unlocked_eras) > 1:
+    selected_era = st.sidebar.selectbox(
+        "Travel to:", 
+        unlocked_eras,
+        index=unlocked_eras.index(st.session_state.era) if st.session_state.era in unlocked_eras else 0
+    )
+    
+    # Only show travel button if a different era is selected
+    if selected_era != st.session_state.era:
+        if st.sidebar.button(f"🚀 Travel to {selected_era}"):
+            st.session_state.era = selected_era
+            st.session_state.current_question = None
+            st.session_state.answered = False
+            st.session_state.question_batch = []
+            st.session_state.current_batch_index = 0
+            st.sidebar.success(f"Welcome to {selected_era}!")
+            st.rerun()
+else:
+    st.sidebar.markdown("Defeat the Stone Age boss to unlock time travel!")
