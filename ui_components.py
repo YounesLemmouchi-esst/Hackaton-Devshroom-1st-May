@@ -290,6 +290,9 @@ def handle_answer(user_answer, correct_answer):
     from config import XP_PER_QUESTION
     from game_mechanics import calculate_multiplier
     
+    # DEBUGGING
+    print(f"DEBUG: handle_answer called with user_answer={user_answer}, correct_answer={correct_answer}")
+    
     # Increment questions answered counter
     if "questions_answered" not in st.session_state:
         st.session_state.questions_answered = 1
@@ -297,6 +300,9 @@ def handle_answer(user_answer, correct_answer):
         st.session_state.questions_answered += 1
     
     if user_answer == correct_answer:
+        # DEBUGGING
+        print(f"DEBUG: CORRECT ANSWER DETECTED")
+        
         # Update streak for correct answer
         st.session_state.current_streak += 1
         st.session_state.max_streak = max(st.session_state.max_streak, st.session_state.current_streak)
@@ -338,11 +344,18 @@ def handle_answer(user_answer, correct_answer):
         st.session_state.answered = True
         return True
     else:
+        # DEBUGGING
+        print(f"DEBUG: WRONG ANSWER DETECTED - user provided '{user_answer}' vs correct '{correct_answer}'")
+        
         # Reset streak for wrong answer
         if st.session_state.current_streak >= 3:
             st.warning(f"Streak broken! You had {st.session_state.current_streak} correct answers in a row.")
         st.session_state.current_streak = 0
+        
+        # DEBUGGING - Add this to check if the error message is actually being called
+        print("DEBUG: About to display error message")
         st.error(f"Wrong. The correct answer was: {correct_answer}")
+        print("DEBUG: Error message displayed")
         
         # Mark as answered but don't clear question yet
         st.session_state.answered = True
@@ -463,6 +476,7 @@ def handle_boss_form(boss_qs):
                     # Incorrect
                     all_correct = False
                     feedback.append(f"❌ {en}: Incorrect (Correct: {fr})")
+                    
 
             # Display feedback after checking all answers
             for msg in feedback:

@@ -1,7 +1,7 @@
 import os
 import json
 import re
-import google.generativeai as genai
+import google.generativeai as genai0
 import streamlit as st
 
 from config import GEMINI_MODEL, CREDENTIALS_PATH, ERAS
